@@ -26,5 +26,5 @@ jobs:
     - name: Upload Injector Executable
       uses: actions/upload-artifact@v4
       with:
-        name: StandChillow_Injector
-        path: StandChillow_Injector.exe
+        name: QzWx3km
+        path: QzWx3km.exe
