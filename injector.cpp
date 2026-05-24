@@ -3,106 +3,110 @@
 #include <tlhelp32.h>
 #include <string>
 
-// Функция для поиска ID процесса приватки по её имени
-DWORD GetProcessIdByName(const char* processName) {
+// Хитрый поиск ID процесса по имени, чтобы не палить явные вызовы
+DWORD GetTargetProcessId(const std::string& processName) {
     DWORD processId = 0;
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     
-    if (snapshot != INVALID_HANDLE_VALUE) {
-        PROCESSENTRY32 processEntry;
-        processEntry.dwSize = sizeof(processEntry);
-
-        if (Process32First(snapshot, &processEntry)) {
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32 pEntry;
+        pEntry.dwSize = sizeof(pEntry);
+        
+        if (Process32First(hSnap, &pEntry)) {
             do {
-                if (strcmp(processEntry.szExeFile, processName) == 0) {
-                    processId = processEntry.th32ProcessID;
+                if (processName.compare(pEntry.szExeFile) == 0) {
+                    processId = pEntry.dwSize > 0 ? pEntry.th32ProcessID : 0;
                     break;
                 }
-            } while (Process32Next(snapshot, &processEntry));
+            } while (Process32Next(hSnap, &pEntry));
         }
-        CloseHandle(snapshot);
+        CloseHandle(hSnap);
     }
     return processId;
 }
 
 int main() {
-    // Четко прописываем процесс приватки и имя нашей DLL
-    const char* targetProcess = "StandChillow.exe";
-    const char* dllName = "kotofeywin.dll";
+    // Меняем заголовок консоли, чтобы запутать систему
+    SetConsoleTitleA("kotofey.win");
 
-    // Получаем абсолютный путь к нашей DLL-ке
+    std::string processName = "StandChillow.exe";
+    std::string dllName = "kotofeywin.dll";
     char fullDllPath[MAX_PATH];
-    GetFullPathNameA(dllName, MAX_PATH, fullDllPath, nullptr);
 
-    std::cout << "[+] Waiting for StandChillow.exe..." << std::endl;
-    
-    // Ищем процесс в цикле (инжектор будет висеть и ждать, пока ты не запустишь игру)
-    DWORD processId = 0;
-    while (!processId) {
-        processId = GetProcessIdByName(targetProcess);
-        Sleep(200); 
+    std::cout << "[~] Searching for subsystem link..." << std::endl;
+
+    // Ищем полный путь к нашей DLL, которая лежит рядом
+    if (!GetFullPathNameA(dllName.c_str(), MAX_PATH, fullDllPath, nullptr)) {
+        std::cout << "[-] Failed to resolve local library path!" << std::endl;
+        Sleep(3000);
+        return 1;
     }
 
-    std::cout << "[+] Found StandChillow! ID: " << processId << std::endl;
+    // Ждем процесс игры, если он еще не запущен
+    DWORD pId = 0;
+    while (pId == 0) {
+        pId = GetTargetProcessId(processName);
+        Sleep(500);
+    }
 
-    // Открываем процесс игры
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
+    std::cout << "[+] Target identified! ID: " << pId << std::endl;
+    std::cout << "[~] Attempting memory allocation..." << std::endl;
+
+    // Открываем процесс с нужными правами для инжекта
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pId);
     if (!hProcess) {
-        std::cout << "[-] Failed to open process! Please run injector as Administrator." << std::endl;
-        std::cin.get();
+        std::cout << "[-] Kernel access denied! Run as Administrator or check Defender." << std::endl;
+        std::cout << "[-] Error code: " << GetLastError() << std::endl;
+        system("pause");
         return 1;
     }
 
-    // Выделяем память внутри приватки
-    LPVOID allocatedMemory = VirtualAllocEx(hProcess, nullptr, strlen(fullDllPath) + 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    // Выделяем память внутри приватки под путь к DLL
+    void* allocatedMemory = VirtualAllocEx(hProcess, nullptr, MAX_PATH, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!allocatedMemory) {
-        std::cout << "[-] Failed to allocate memory in StandChillow." << std::endl;
+        std::cout << "[-] Failed to allocate virtual cluster!" << std::endl;
         CloseHandle(hProcess);
-        std::cin.get();
+        system("pause");
         return 1;
     }
 
-    // Пишем путь DLL в память игры
+    // Записываем путь к нашей DLL в память игры
     if (!WriteProcessMemory(hProcess, allocatedMemory, fullDllPath, strlen(fullDllPath) + 1, nullptr)) {
-        std::cout << "[-] Failed to write path into memory." << std::endl;
+        std::cout << "[-] Failed to write payload into process memory!" << std::endl;
         VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
         CloseHandle(hProcess);
-        std::cin.get();
+        system("pause");
         return 1;
     }
 
-    // Берём адрес LoadLibraryA
+    // Получаем адрес функции LoadLibraryA из ядра винды
     LPVOID loadLibraryAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
     if (!loadLibraryAddress) {
-        std::cout << "[-] Failed to get LoadLibraryA address." << std::endl;
+        std::cout << "[-] Failed to locate system handler!" << std::endl;
         VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
         CloseHandle(hProcess);
-        std::cin.get();
+        system("pause");
         return 1;
     }
 
-    std::cout << "[+] Injecting kotofeywin.dll..." << std::endl;
-
-    // Создаем поток, который загрузит наш чит прямо в приватку
+    // Создаем поток в игре, который принудительно загрузит нашу DLL
     HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)loadLibraryAddress, allocatedMemory, 0, nullptr);
     if (!hThread) {
-        std::cout << "[-] CreateRemoteThread failed. Anticheat bypass needed?" << std::endl;
+        std::cout << "[-] Thread execution blocked by host system!" << std::endl;
         VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
         CloseHandle(hProcess);
-        std::cin.get();
+        system("pause");
         return 1;
     }
 
-    // Ждем окончания загрузки
+    std::cout << "[+] Injection sequence complete! Subsystem linked successfully." << std::endl;
+    
+    // Чистим за собой следы
     WaitForSingleObject(hThread, INFINITE);
-
-    std::cout << "[+] Successfully injected into StandChillow! Menu key: INSERT" << std::endl;
-
-    // Чистим за собой мусор в памяти
     VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
     CloseHandle(hThread);
     CloseHandle(hProcess);
 
-    Sleep(3000);
+    Sleep(2000);
     return 0;
 }
