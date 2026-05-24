@@ -1,0 +1,28 @@
+name: Build Custom Injector
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Add MSBuild and MSVC to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Compile Injector.cpp
+      run: |
+        cl.exe /EHsc /O2 /MT injector.cpp /link /OUT:StandChillow_Injector.exe
+
+    - name: Upload Injector Executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: StandChillow_Injector
+        path: StandChillow_Injector.exe
