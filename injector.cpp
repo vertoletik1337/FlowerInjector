@@ -2,18 +2,19 @@
 #include <iostream>
 #include <string>
 
+// Специальная директива для линкера, чтобы исправить ошибку LNK2019
+#pragma comment(lib, "user32.lib")
+
 int main() {
-    // Настраиваем консоль
     SetConsoleCP(1251);
     SetConsoleOutputCP(1251);
-    SetConsoleTitleA("kotofey.win t.me/pikmizs dsc.gg/kotofey t.me/whitelotosteams t.me/kotofeymods ❘ я ебал маму veIvet_pulls");
+    SetConsoleTitleA("kotofey.win standchillow fuckeed! t.me/pikmizs dsc.gg/kotofey t.me/whitelotosteams t.me/kotofeymods ❘ я ебал маму veIvet_pulls");
 
     std::string dllName = "kotofeywin.dll";
     char fullDllPath[MAX_PATH];
 
     std::cout << "[~] Ожидание запуска StandChillow..." << std::endl;
 
-    // Проверяем путь к нашей DLL
     if (!GetFullPathNameA(dllName.c_str(), MAX_PATH, fullDllPath, nullptr)) {
         std::cout << "[-] Не удалось получить путь к DLL!" << std::endl;
         Sleep(3000);
@@ -23,17 +24,12 @@ int main() {
     HWND hWindow = nullptr;
     DWORD pId = 0;
 
-    // Цикл крутится, пока игра реально не откроется
     while (!hWindow) {
-        // Ищем окно игры. Если у приватки вверху написано "StandChillow" — найдет мгновенно.
-        // Если имя окна другое (например, "Standoff 2"), заменим первый параметр на нужный.
         hWindow = FindWindowA(nullptr, "StandChillow");
-        
         if (hWindow) {
-            // Забираем реальный ID процесса прямо из этого окна
             GetWindowThreadProcessId(hWindow, &pId);
             if (pId == 0) {
-                hWindow = nullptr; // Если ID кривой, ищем заново
+                hWindow = nullptr;
             }
         }
         Sleep(500);
@@ -42,7 +38,6 @@ int main() {
     std::cout << "[+] Игра успешно обнаружена! Железный ID: " << pId << std::endl;
     std::cout << "[~] Подключение к памяти процесса..." << std::endl;
 
-    // Открываем процесс с точечными правами
     HANDLE hProcess = OpenProcess(
         PROCESS_CREATE_THREAD | 
         PROCESS_QUERY_INFORMATION | 
@@ -60,7 +55,6 @@ int main() {
         return 1;
     }
 
-    // Выделяем память под путь к DLL
     void* allocatedMemory = VirtualAllocEx(hProcess, nullptr, MAX_PATH, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!allocatedMemory) {
         std::cout << "[-] Ошибка VirtualAllocEx: " << GetLastError() << std::endl;
@@ -69,7 +63,6 @@ int main() {
         return 1;
     }
 
-    // Записываем путь
     if (!WriteProcessMemory(hProcess, allocatedMemory, fullDllPath, strlen(fullDllPath) + 1, nullptr)) {
         std::cout << "[-] Ошибка WriteProcessMemory: " << GetLastError() << std::endl;
         VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
@@ -78,7 +71,6 @@ int main() {
         return 1;
     }
 
-    // Вызываем загрузку DLL в игре
     LPVOID loadLibraryAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
     HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)loadLibraryAddress, allocatedMemory, 0, nullptr);
     
