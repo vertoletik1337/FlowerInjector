@@ -8,15 +8,15 @@
 int main() {
     SetConsoleCP(1251);
     SetConsoleOutputCP(1251);
-    SetConsoleTitleA("kotofey.win standchillow fuckeed! t.me/pikmizs dsc.gg/kotofey t.me/whitelotosteams t.me/kotofeymods ❘ я ебал маму veIvet_pulls");
+    SetConsoleTitleA("kotofey.win standchillow fuckeed! t.me/pikmizs dsc.gg/kotofey t.me/whitelotosteams t.me/kotofeymods ya ebal mamu veIvet_pulls");
 
     std::string dllName = "kotofeywin.dll";
     char fullDllPath[MAX_PATH];
 
-    std::cout << "[~] Ожидание запуска StandChillow..." << std::endl;
+    std::cout << "[~] Waiting Standchillow" << std::endl;
 
     if (!GetFullPathNameA(dllName.c_str(), MAX_PATH, fullDllPath, nullptr)) {
-        std::cout << "[-] Не удалось получить путь к DLL!" << std::endl;
+        std::cout << "[-] tak stop a gde kolbaska?" << std::endl;
         Sleep(3000);
         return 1;
     }
@@ -35,8 +35,8 @@ int main() {
         Sleep(500);
     }
 
-    std::cout << "[+] Игра успешно обнаружена! Железный ID: " << pId << std::endl;
-    std::cout << "[~] Подключение к памяти процесса..." << std::endl;
+    std::cout << "[+] Game detected! PID: " << pId << std::endl;
+    std::cout << "[~] Injecting DLL..." << std::endl;
 
     HANDLE hProcess = OpenProcess(
         PROCESS_CREATE_THREAD | 
@@ -82,7 +82,7 @@ int main() {
         return 1;
     }
 
-    std::cout << "[+] Инжект пробит! Можешь разносить." << std::endl;
+    std::cout << "[+] Injected! t.me/pikmizs dsc.gg/kotofey t.me/whitelotosteams t.me/kotofeymods" << std::endl;
     
     WaitForSingleObject(hThread, INFINITE);
     VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
