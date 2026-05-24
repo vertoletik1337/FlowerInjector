@@ -3,7 +3,7 @@
 #include <tlhelp32.h>
 #include <string>
 
-// Хитрый поиск ID процесса по имени, чтобы не палить явные вызовы
+// Поиск ID процесса без лишнего палева
 DWORD GetTargetProcessId(const std::string& processName) {
     DWORD processId = 0;
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -15,7 +15,7 @@ DWORD GetTargetProcessId(const std::string& processName) {
         if (Process32First(hSnap, &pEntry)) {
             do {
                 if (processName.compare(pEntry.szExeFile) == 0) {
-                    processId = pEntry.dwSize > 0 ? pEntry.th32ProcessID : 0;
+                    processId = pEntry.th32ProcessID;
                     break;
                 }
             } while (Process32Next(hSnap, &pEntry));
@@ -26,82 +26,92 @@ DWORD GetTargetProcessId(const std::string& processName) {
 }
 
 int main() {
-    // Меняем заголовок консоли, чтобы запутать систему
-    SetConsoleTitleA("kotofey.win");
+    // Ставим обычный гражданский заголовок окна
+    SetConsoleTitleA("Data Linker Subsystem");
 
     std::string processName = "StandChillow.exe";
     std::string dllName = "kotofeywin.dll";
     char fullDllPath[MAX_PATH];
 
-    std::cout << "[~] Searching for subsystem link..." << std::endl;
+    std::cout << "[~] Looking for game process..." << std::endl;
 
-    // Ищем полный путь к нашей DLL, которая лежит рядом
+    // Проверяем путь к нашей DLL-ке
     if (!GetFullPathNameA(dllName.c_str(), MAX_PATH, fullDllPath, nullptr)) {
-        std::cout << "[-] Failed to resolve local library path!" << std::endl;
+        std::cout << "[-] Failed to get DLL path!" << std::endl;
         Sleep(3000);
         return 1;
     }
 
-    // Ждем процесс игры, если он еще не запущен
+    // Ждем, пока приватка запустится
     DWORD pId = 0;
     while (pId == 0) {
         pId = GetTargetProcessId(processName);
         Sleep(500);
     }
 
-    std::cout << "[+] Target identified! ID: " << pId << std::endl;
-    std::cout << "[~] Attempting memory allocation..." << std::endl;
+    std::cout << "[+] Found game! Process ID: " << pId << std::endl;
+    std::cout << "[~] Connecting to memory link..." << std::endl;
 
-    // Открываем процесс с нужными правами для инжекта
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pId);
+    // ВНИМАНИЕ: Запрашиваем только точечные права, которые винда разрешает без админки!
+    // Убрали PROCESS_ALL_ACCESS, чтобы не триггерить ошибку 5
+    HANDLE hProcess = OpenProcess(
+        PROCESS_CREATE_THREAD | 
+        PROCESS_QUERY_INFORMATION | 
+        PROCESS_VM_OPERATION | 
+        PROCESS_VM_WRITE | 
+        PROCESS_VM_READ, 
+        FALSE, 
+        pId
+    );
+
     if (!hProcess) {
-        std::cout << "[-] Kernel access denied! Run as Administrator or check Defender." << std::endl;
-        std::cout << "[-] Error code: " << GetLastError() << std::endl;
+        std::cout << "[-] Пёс хуйню сморозил! Ошибка доступа: " << GetLastError() << std::endl;
+        std::cout << "[!] Убедись, что игра и этот инжектор запущены от ОДНОГО пользователя." << std::endl;
         system("pause");
         return 1;
     }
 
-    // Выделяем память внутри приватки под путь к DLL
+    // Выделяем память под путь DLL
     void* allocatedMemory = VirtualAllocEx(hProcess, nullptr, MAX_PATH, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!allocatedMemory) {
-        std::cout << "[-] Failed to allocate virtual cluster!" << std::endl;
+        std::cout << "[-] VirtualAllocEx failed! Error: " << GetLastError() << std::endl;
         CloseHandle(hProcess);
         system("pause");
         return 1;
     }
 
-    // Записываем путь к нашей DLL в память игры
+    // Записываем путь
     if (!WriteProcessMemory(hProcess, allocatedMemory, fullDllPath, strlen(fullDllPath) + 1, nullptr)) {
-        std::cout << "[-] Failed to write payload into process memory!" << std::endl;
+        std::cout << "[-] WriteProcessMemory failed! Error: " << GetLastError() << std::endl;
         VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
         CloseHandle(hProcess);
         system("pause");
         return 1;
     }
 
-    // Получаем адрес функции LoadLibraryA из ядра винды
+    // Берём адрес LoadLibraryA
     LPVOID loadLibraryAddress = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
     if (!loadLibraryAddress) {
-        std::cout << "[-] Failed to locate system handler!" << std::endl;
+        std::cout << "[-] Failed to get LoadLibraryA address!" << std::endl;
         VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
         CloseHandle(hProcess);
         system("pause");
         return 1;
     }
 
-    // Создаем поток в игре, который принудительно загрузит нашу DLL
+    // Запускаем поток в игре без админских привилегий
     HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)loadLibraryAddress, allocatedMemory, 0, nullptr);
     if (!hThread) {
-        std::cout << "[-] Thread execution blocked by host system!" << std::endl;
+        std::cout << "[-] CreateRemoteThread blocked! Error: " << GetLastError() << std::endl;
         VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
         CloseHandle(hProcess);
         system("pause");
         return 1;
     }
 
-    std::cout << "[+] Injection sequence complete! Subsystem linked successfully." << std::endl;
+    std::cout << "[+] Инжект прошёл успешно, петушара закрывается!" << std::endl;
     
-    // Чистим за собой следы
+    // Аккуратно чистим за собой
     WaitForSingleObject(hThread, INFINITE);
     VirtualFreeEx(hProcess, allocatedMemory, 0, MEM_RELEASE);
     CloseHandle(hThread);
